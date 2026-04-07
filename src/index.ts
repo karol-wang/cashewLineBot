@@ -1,6 +1,14 @@
 import * as LINE from '@line/bot-sdk';
 import express, { Request, Response } from 'express';
 import dotenv from 'dotenv';
+import dayjs from 'dayjs';
+import customParseFormat from 'dayjs/plugin/customParseFormat';
+import timezone from 'dayjs/plugin/timezone';
+import { achunCategory, categoryMap, rechargeWords } from './maps';
+
+dayjs.extend(customParseFormat);
+dayjs.extend(timezone);
+dayjs.tz.setDefault('Asia/Taipei');
 
 dotenv.config();
 
@@ -14,6 +22,13 @@ const client = LINE.LineBotClient.fromChannelAccessToken({
   channelAccessToken: config.channelAccessToken,
 });
 
+const CashewPlatform = {
+  webApp: process.env.CASHEW_WEB,
+  app: process.env.CASHEW_APP,
+} as const;
+
+const REDIRECT_URL = '/redirect';
+
 const app = express();
 
 // Webhook 路由
@@ -21,7 +36,10 @@ app.post(
   '/webhook',
   LINE.middleware({ channelSecret: config.channelSecret }),
   (req: Request, res: Response) => {
-    Promise.all(req.body.events.map(handleEvent))
+    const baseUrl = `${req.protocol}://${req.get('host')}`;
+    Promise.all(
+      req.body.events.map((event: LINE.webhook.MessageEvent) => handleEvent(event, baseUrl))
+    )
       .then(result => res.json(result))
       .catch(err => {
         if (err instanceof LINE.HTTPFetchError) {
@@ -33,6 +51,29 @@ app.post(
       });
   }
 );
+
+app.get(REDIRECT_URL, (req, res) => {
+  const { JSON } = req.query;
+  if (!JSON) {
+    return res.status(404).send('Missing JSON parameter');
+  }
+
+  const userAgent = req.headers['user-agent'] || '';
+
+  // 判斷是否為行動裝置
+  const isMobile = /Android|iPhone|iPad|iPod/i.test(userAgent);
+  let targetUrl: URL;
+  if (isMobile) {
+    // 手機版：導向 Cashew App 的 Deep Link
+    targetUrl = new URL(`${CashewPlatform.app}/addTransaction`);
+    targetUrl.searchParams.append('JSON', JSON as string);
+  } else {
+    // 電腦版：導向 Cashew Web App
+    targetUrl = new URL(`${CashewPlatform.webApp}/addTransaction`);
+    targetUrl.searchParams.append('JSON', encodeURIComponent(JSON as string)); // 電腦版本需要再 encode 一次才能正常解析
+  }
+  return res.redirect(targetUrl.href);
+});
 
 interface Transaction {
   title?: string;
@@ -46,46 +87,59 @@ interface Transaction {
 
 /**
  * 從文字中解析出交易紀錄，並回傳交易的物件
+ * @description 日期(MMDD) 品項 金額:備註
  */
 const parseTransaction = (text: string): Transaction => {
-  // TODO: 增加備註 & 阿君 & 日期的解析
-  const [description, amountStr] = text.split(/\s+/);
-  const amount = parseInt(amountStr, 10);
+  // 增加備註 & 日期的解析
+  const match = text
+    .trim()
+    .match(/^(?:((?:0[1-9]|1[0-2])(?:0[1-9]|[12]\d|3[01]))\s+)?(.+)\s+(-?\d+)\s*(?::(.*))?$/);
+
+  if (!match) {
+    // Return a dummy transaction that will fail the validation in handleEvent
+    return { category: '', subcategory: '', amount: NaN } as unknown as Transaction;
+  }
+
+  const [, dateStr, descRaw, amountStr, noteRaw] = match;
+  const description = descRaw.trim();
+  /**
+   * 預設為支出(負數)
+   */
+  const amount = -parseInt(amountStr, 10);
+
+  let date: string | undefined;
+  if (dateStr) {
+    const d = dayjs(dateStr, ['MMDD'], true);
+    date = d.isValid() ? d.format('YYYY-MM-DD') : undefined;
+  }
+
+  const note = noteRaw?.trim();
 
   if (description.includes('阿君')) {
-    const spentWords = ['花', '減', '吃', '喝', '扣'];
-    const achunCategory = { spent: '阿君仔', recharge: '阿君抵加' };
-    const regex = new RegExp(spentWords.join('|'));
-    const category = regex.test(description)
-      ? achunCategory.spent
-      : achunCategory.recharge;
+    const regex = new RegExp(rechargeWords.join('|'));
+    const isRecharge = regex.test(description);
+    const category = isRecharge ? achunCategory.recharge : achunCategory.spent;
 
     return {
       account: '侯阿君',
-      amount,
+      amount: isRecharge ? -amount : amount,
       category,
       subcategory: '',
+      date,
+      note,
     };
   }
-
-  const categoryMap = {
-    飲食: ['早餐', '午餐', '晚餐', '宵夜', '飲料', '甜點', '零食', '其他'],
-    交通: ['捷運', '公車', '計程車', '油錢', '停車費', '其他'],
-    購物: ['服飾', '美妝', '日用品', '其他'],
-    娛樂: ['電影', '遊戲', '其他'],
-    其他: ['其他'],
-  };
 
   const [category] = Object.entries(categoryMap).find(([category, subCategory]) =>
     subCategory.includes(description)
   ) ?? [''];
   const subcategory = category ? description : '';
 
-  return { category, subcategory, amount };
+  return { category, subcategory, amount, date, note };
 };
 
 /**
- * 構造 Cashew Deep Link (URL Scheme)
+ * 構造 Cashew App Link (依平台導向 Web App 或 App)
  * @param text
  * @example
  *  {
@@ -102,24 +156,23 @@ const parseTransaction = (text: string): Transaction => {
  *    ]
  *  }
  */
-const parseCashewLink = (transactions: Transaction[]) => {
-  const cashewLink = new URL(`https://cashewapp.web.app/addTransaction`);
-  cashewLink.searchParams.append('JSON', JSON.stringify({ transactions }));
+const parseCashewLink = (transactions: Transaction[], baseUrl: string) => {
+  const redirectUrl = new URL(`${baseUrl}${REDIRECT_URL}`);
+  redirectUrl.searchParams.append('JSON', JSON.stringify({ transactions }));
 
-  console.log('📝file: index.ts ~ line 99 ~ transactionsText:');
+  console.log('📝file: index.ts ~ parseCashewLink ~ transactionsText:');
   console.dir(transactions);
 
-  return cashewLink.href;
+  return redirectUrl.href;
 };
 
-async function handleEvent(event: LINE.webhook.MessageEvent): Promise<any> {
+async function handleEvent(event: LINE.webhook.MessageEvent, baseUrl: string): Promise<any> {
   // 只處理文字訊息
   if (event.type !== 'message' || event.message.type !== 'text') {
     return Promise.resolve(null);
   }
 
   const userText = event.message.text.trim();
-  // 解析格式：品項 金額 (例如: 雞肉飯 60)
   const transactionsText = userText.split(/\n/);
 
   try {
@@ -134,12 +187,14 @@ async function handleEvent(event: LINE.webhook.MessageEvent): Promise<any> {
       return transaction;
     });
 
-    const actionLink = parseCashewLink(transactions);
+    const actionLink = parseCashewLink(transactions, baseUrl);
+
+    // 每一筆交易顯示的樣子
     const flexContent = transactions.map<LINE.messagingApi.FlexComponent>(
-      ({ category, subcategory, amount }) => {
+      ({ date, category, subcategory, amount, note }) => {
         return {
           type: 'text',
-          text: `${category} - ${subcategory} $${amount}`,
+          text: `${date} ${category} - ${subcategory} $${Math.abs(amount)} ${note}`,
           weight: 'bold',
           size: 'md',
           margin: 'md',
@@ -194,7 +249,7 @@ async function handleEvent(event: LINE.webhook.MessageEvent): Promise<any> {
       messages: [
         {
           type: 'text',
-          text: '⚠️ 請輸入正確格式：「品項 金額」\n例如：咖啡 120',
+          text: '⚠️ 請輸入正確格式：\n「日期(MMDD) 品項 金額:備註」\n例如：\n0408 咖啡 120:備註\n0409 飲料 50\n晚餐 99',
         },
       ],
     });
