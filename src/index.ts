@@ -5,6 +5,8 @@ import dayjs from 'dayjs';
 import customParseFormat from 'dayjs/plugin/customParseFormat';
 import timezone from 'dayjs/plugin/timezone';
 import { achunCategory, categoryMap, rechargeWords } from './maps';
+import { Transaction } from './types';
+import { createFlexMessage } from './helper';
 
 dayjs.extend(customParseFormat);
 dayjs.extend(timezone);
@@ -75,21 +77,11 @@ app.get(REDIRECT_URL, (req, res) => {
   return res.redirect(targetUrl.href);
 });
 
-interface Transaction {
-  title?: string;
-  category: string;
-  subcategory: string;
-  amount: number;
-  note?: string;
-  date?: string;
-  account?: '我的錢錢' | '侯阿君';
-}
-
 /**
  * 從文字中解析出交易紀錄，並回傳交易的物件
  * @description 日期(MMDD) 品項 金額:備註
  */
-const parseTransaction = (text: string): Transaction => {
+const parseTransaction = (text: string, globalDate?: string): Transaction => {
   // 增加備註 & 日期的解析
   const match = text
     .trim()
@@ -111,6 +103,10 @@ const parseTransaction = (text: string): Transaction => {
   if (dateStr) {
     const d = dayjs(dateStr, ['MMDD'], true);
     date = d.isValid() ? d.format('YYYY-MM-DD') : undefined;
+  }
+
+  if (!date && globalDate) {
+    date = globalDate;
   }
 
   const note = noteRaw?.trim();
@@ -173,11 +169,31 @@ async function handleEvent(event: LINE.webhook.MessageEvent, baseUrl: string): P
   }
 
   const userText = event.message.text.trim();
-  const transactionsText = userText.split(/\n/);
+  const transactionsText = userText
+    .split(/\n/)
+    .map(t => t.trim())
+    .filter(Boolean);
+
+  let globalDate: string | undefined;
+  if (transactionsText.length > 0) {
+    // 判斷第一行是否為日期
+    const dMatch = transactionsText[0].match(/^((?:0[1-9]|1[0-2])(?:0[1-9]|[12]\d|3[01]))$/);
+    if (dMatch) {
+      const d = dayjs(dMatch[1], ['MMDD'], true);
+      if (d.isValid()) {
+        globalDate = d.format('YYYY-MM-DD');
+        transactionsText.shift();
+      }
+    }
+  }
 
   try {
+    if (transactionsText.length === 0) {
+      throw new Error('No transactions');
+    }
+
     const transactions = transactionsText.map(transactionText => {
-      const transaction = parseTransaction(transactionText);
+      const transaction = parseTransaction(transactionText, globalDate);
 
       // 驗證輸入內容
       if (!transaction.amount || isNaN(transaction.amount) || !transaction.category) {
@@ -189,50 +205,9 @@ async function handleEvent(event: LINE.webhook.MessageEvent, baseUrl: string): P
 
     const actionLink = parseCashewLink(transactions, baseUrl);
 
-    // 每一筆交易顯示的樣子
-    const flexContent = transactions.map<LINE.messagingApi.FlexComponent>(
-      ({ date, category, subcategory, amount, note }) => {
-        return {
-          type: 'text',
-          text: `${date} ${category} - ${subcategory} $${Math.abs(amount)} ${note}`,
-          weight: 'bold',
-          size: 'md',
-          margin: 'md',
-        };
-      }
-    );
-
     // 定義 Flex Message 內容
-    const flexContainer: LINE.messagingApi.FlexContainer = {
-      type: 'bubble',
-      body: {
-        type: 'box',
-        layout: 'vertical',
-        contents: [
-          {
-            type: 'text',
-            text: 'Cashew 記帳助手',
-            weight: 'bold',
-            color: '#1DB446',
-            size: 'sm',
-          },
-          ...flexContent,
-          {
-            type: 'button',
-            style: 'primary',
-            color: '#1DB446',
-            margin: 'xl',
-            action: {
-              type: 'uri',
-              label: '確認並存入 Cashew',
-              uri: actionLink,
-            },
-          },
-        ],
-      },
-    };
+    const flexContainer = createFlexMessage(transactions, actionLink);
 
-    // 回傳 Flex Message
     return client.replyMessage({
       replyToken: event.replyToken as string,
       messages: [
@@ -249,7 +224,7 @@ async function handleEvent(event: LINE.webhook.MessageEvent, baseUrl: string): P
       messages: [
         {
           type: 'text',
-          text: '⚠️ 請輸入正確格式：\n「日期(MMDD) 品項 金額:備註」\n例如：\n0408 咖啡 120:備註\n0409 飲料 50\n晚餐 99',
+          text: '⚠️ 請輸入正確格式：\n「日期(MMDD) 品項 金額:備註」\n\n或是將日期寫在第一行：\n0408\n咖啡 120:備註\n晚餐 99',
         },
       ],
     });
