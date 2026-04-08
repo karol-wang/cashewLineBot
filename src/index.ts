@@ -5,7 +5,7 @@ import dayjs from 'dayjs';
 import customParseFormat from 'dayjs/plugin/customParseFormat';
 import timezone from 'dayjs/plugin/timezone';
 import { achunCategory, categoryMap, rechargeWords } from './maps';
-import { Transaction } from './types';
+import { CashewPlatform, Transaction } from './types';
 import { createFlexMessage } from './helper';
 
 dayjs.extend(customParseFormat);
@@ -24,12 +24,10 @@ const client = LINE.LineBotClient.fromChannelAccessToken({
   channelAccessToken: config.channelAccessToken,
 });
 
-const CashewPlatform = {
-  webApp: process.env.CASHEW_WEB,
-  app: process.env.CASHEW_APP,
+const CashewPlatformUrl: CashewPlatform = {
+  webApp: process.env.CASHEW_WEB || '',
+  app: process.env.CASHEW_APP || '',
 } as const;
-
-const REDIRECT_URL = '/redirect';
 
 const app = express();
 
@@ -53,29 +51,6 @@ app.post(
       });
   }
 );
-
-app.get(REDIRECT_URL, (req, res) => {
-  const { JSON } = req.query;
-  if (!JSON) {
-    return res.status(404).send('Missing JSON parameter');
-  }
-
-  const userAgent = req.headers['user-agent'] || '';
-
-  // 判斷是否為行動裝置
-  const isMobile = /Android|iPhone|iPad|iPod/i.test(userAgent);
-  let targetUrl: URL;
-  if (isMobile) {
-    // 手機版：導向 Cashew App 的 Deep Link
-    targetUrl = new URL(`${CashewPlatform.app}/addTransaction`);
-    targetUrl.searchParams.append('JSON', JSON as string);
-  } else {
-    // 電腦版：導向 Cashew Web App
-    targetUrl = new URL(`${CashewPlatform.webApp}/addTransaction`);
-    targetUrl.searchParams.append('JSON', encodeURIComponent(JSON as string)); // 電腦版本需要再 encode 一次才能正常解析
-  }
-  return res.redirect(targetUrl.href);
-});
 
 /**
  * 從文字中解析出交易紀錄，並回傳交易的物件
@@ -120,7 +95,6 @@ const parseTransaction = (text: string, globalDate?: string): Transaction => {
       account: '侯阿君',
       amount: isRecharge ? -amount : amount,
       category,
-      subcategory: '',
       date,
       note,
     };
@@ -152,14 +126,21 @@ const parseTransaction = (text: string, globalDate?: string): Transaction => {
  *    ]
  *  }
  */
-const parseCashewLink = (transactions: Transaction[], baseUrl: string) => {
-  const redirectUrl = new URL(`${baseUrl}${REDIRECT_URL}`);
-  redirectUrl.searchParams.append('JSON', JSON.stringify({ transactions }));
-
+const parseCashewLink = (transactions: Transaction[]): CashewPlatform => {
   console.log('📝file: index.ts ~ parseCashewLink ~ transactionsText:');
   console.dir(transactions);
 
-  return redirectUrl.href;
+  const json = JSON.stringify({ transactions });
+
+  // 手機版：導向 Cashew App 的 Deep Link
+  const appUrl = new URL(`${CashewPlatformUrl.app}/addTransaction`);
+  appUrl.searchParams.append('JSON', json);
+
+  // 電腦版：導向 Cashew Web App
+  const webUrl = new URL(`${CashewPlatformUrl.webApp}/addTransaction`);
+  webUrl.searchParams.append('JSON', json);
+
+  return { webApp: webUrl.href, app: appUrl.href };
 };
 
 async function handleEvent(event: LINE.webhook.MessageEvent, baseUrl: string): Promise<any> {
@@ -203,10 +184,10 @@ async function handleEvent(event: LINE.webhook.MessageEvent, baseUrl: string): P
       return transaction;
     });
 
-    const actionLink = parseCashewLink(transactions, baseUrl);
+    const platformLinks = parseCashewLink(transactions);
 
     // 定義 Flex Message 內容
-    const flexContainer = createFlexMessage(transactions, actionLink);
+    const flexContainer = createFlexMessage(transactions, platformLinks);
 
     return client.replyMessage({
       replyToken: event.replyToken as string,

@@ -1,5 +1,5 @@
 import { messagingApi } from '@line/bot-sdk';
-import { Transaction } from './types';
+import { CashewPlatform, Transaction } from './types';
 
 type FlexComponent = messagingApi.FlexComponent;
 type FlexContainer = messagingApi.FlexContainer;
@@ -7,11 +7,11 @@ type FlexContainer = messagingApi.FlexContainer;
 /**
  * 構造 Flex Message 內容 (每一筆交易顯示的樣子)
  * @param transactions 交易紀錄
- * @param actionLink 導向 Cashew App Link
+ * @param platformLinks 導向 Cashew App Link 物件
  */
 export const createFlexMessage = (
   transactions: Transaction[],
-  actionLink: string
+  platformLinks: CashewPlatform
 ): FlexContainer => {
   const transactionsByDate = transactions.reduce(
     (acc, transaction) => {
@@ -127,9 +127,9 @@ export const createFlexMessage = (
           action: {
             type: 'uri',
             label: '確認並存入 Cashew',
-            uri: actionLink,
+            uri: platformLinks.app,
             altUri: {
-              desktop: 'https://google.com',
+              desktop: platformLinks.webApp,
             },
           },
         },
