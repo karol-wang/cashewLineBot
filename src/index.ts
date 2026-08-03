@@ -100,8 +100,10 @@ const parseTransaction = (text: string, globalDate?: string): Transaction => {
     };
   }
 
-  const [category] = Object.entries(categoryMap).find(([category, subCategory]) =>
-    subCategory.includes(description)
+  const [category] = Object.entries(categoryMap).find(([, subCategories]) =>
+    subCategories.some(
+      keyword => description.includes(keyword) || keyword.includes(description)
+    ) // 輸入內容與子類別關鍵字任一方包含另一方，就符合
   ) ?? [''];
   const subcategory = category ? description : '';
 
