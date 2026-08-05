@@ -2,13 +2,12 @@ import * as LINE from '@line/bot-sdk';
 import express, { Request, Response } from 'express';
 import dotenv from 'dotenv';
 import dayjs from 'dayjs';
-import customParseFormat from 'dayjs/plugin/customParseFormat';
 import timezone from 'dayjs/plugin/timezone';
-import { achunCategory, getCategoryMap, depositWords } from './maps';
-import { CashewPlatform, Transaction } from './types';
+import { getCategoryMap } from './maps';
+import { CashewPlatform } from './types';
+import { parseTransaction, parseCashewLink } from './parser';
 import { createFlexMessage } from './helper';
 
-dayjs.extend(customParseFormat);
 dayjs.extend(timezone);
 dayjs.tz.setDefault('Asia/Taipei');
 
@@ -57,102 +56,7 @@ app.post(
   }
 );
 
-/**
- * 從文字中解析出交易紀錄，並回傳交易的物件
- * @description 日期(MMDD) 品項 金額:備註
- */
-const parseTransaction = (
-  text: string,
-  globalDate?: string,
-  currentCategoryMap: Record<string, string[]> = {}
-): Transaction => {
-  // 增加備註 & 日期的解析
-  const match = text
-    .trim()
-    .match(/^(?:((?:0[1-9]|1[0-2])(?:0[1-9]|[12]\d|3[01]))\s+)?(.+)\s+(-?\d+)\s*(?::(.*))?$/);
-
-  if (!match) {
-    // Return a dummy transaction that will fail the validation in handleEvent
-    return { category: '', subcategory: '', amount: NaN } as unknown as Transaction;
-  }
-
-  const [, dateStr, descRaw, amountStr, noteRaw] = match;
-  const description = descRaw.trim();
-  /**
-   * 預設為支出(負數)
-   */
-  const amount = -parseInt(amountStr, 10);
-
-  let date: string | undefined;
-  if (dateStr) {
-    const d = dayjs(dateStr, ['MMDD'], true);
-    date = d.isValid() ? d.format('YYYY-MM-DD') : undefined;
-  }
-
-  if (!date && globalDate) {
-    date = globalDate;
-  }
-
-  const note = noteRaw?.trim();
-
-  if (description.includes('阿君')) {
-    const regex = new RegExp(depositWords.join('|'));
-    const isRecharge = regex.test(description);
-    const category = isRecharge ? achunCategory.deposit : achunCategory.spent;
-
-    return {
-      account: '侯阿君',
-      amount: isRecharge ? -amount : amount,
-      category,
-      date,
-      note,
-    };
-  }
-
-  const [category] = Object.entries(currentCategoryMap).find(
-    ([, subCategories]) =>
-      subCategories.some(keyword => description.includes(keyword) || keyword.includes(description)) // 輸入內容與子類別關鍵字任一方包含另一方，就符合
-  ) ?? [''];
-  const subcategory = category ? description : '';
-
-  return { category, subcategory, amount, date, note };
-};
-
-/**
- * 構造 Cashew App Link (依平台導向 Web App 或 App)
- * @param text
- * @example
- *  {
- *    "transactions": [
- *      {
- *        "amount": "-100",
- *        "notes": "This is a note",
- *        "category": "Shopping"
- *      },
- *      {
- *        "amount": "-150",
- *        "notes": "This is a note 2"
- *      }
- *    ]
- *  }
- */
-const parseCashewLink = (transactions: Transaction[]): CashewPlatform => {
-  console.log('📝file: index.ts ~ parseCashewLink ~ transactionsText:');
-  console.dir(transactions);
-
-  const json = JSON.stringify({ transactions });
-
-  // 手機版：導向 Cashew App 的 Deep Link
-  const appUrl = new URL(`${CashewPlatformUrl.app}/addTransaction`);
-  appUrl.searchParams.append('JSON', json);
-
-  // 電腦版：導向 Cashew Web App
-  const webUrl = new URL(`${CashewPlatformUrl.webApp}/addTransaction`);
-  webUrl.searchParams.append('JSON', json);
-
-  return { webApp: webUrl.href, app: appUrl.href };
-};
-
+/** Line Bot Event Handler */
 async function handleEvent(event: LINE.webhook.MessageEvent, baseUrl: string): Promise<any> {
   // 只處理文字訊息
   if (event.type !== 'message' || event.message.type !== 'text') {
@@ -196,7 +100,9 @@ async function handleEvent(event: LINE.webhook.MessageEvent, baseUrl: string): P
       return transaction;
     });
 
-    const platformLinks = parseCashewLink(transactions);
+    const platformLinks = parseCashewLink(transactions, CashewPlatformUrl);
+    console.log('📝file: index.ts ~ parseCashewLink ~ transactions:');
+    console.dir(transactions);
 
     // 定義 Flex Message 內容
     const flexContainer = createFlexMessage(transactions, platformLinks);
