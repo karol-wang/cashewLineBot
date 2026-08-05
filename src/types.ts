@@ -1,3 +1,6 @@
+/**
+ * Cashew App Link 建立需要用到的交易紀錄
+ */
 interface Transaction {
   title?: string;
   category: string;

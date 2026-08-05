@@ -4,7 +4,7 @@ import dotenv from 'dotenv';
 import dayjs from 'dayjs';
 import customParseFormat from 'dayjs/plugin/customParseFormat';
 import timezone from 'dayjs/plugin/timezone';
-import { achunCategory, categoryMap, rechargeWords } from './maps';
+import { achunCategory, getCategoryMap, depositWords } from './maps';
 import { CashewPlatform, Transaction } from './types';
 import { createFlexMessage } from './helper';
 
@@ -31,6 +31,11 @@ const CashewPlatformUrl: CashewPlatform = {
 
 const app = express();
 
+// 健康檢查路由
+app.get('/', (req: Request, res: Response) => {
+  res.send('🚀 Cashew LINE Bot is active and running!');
+});
+
 // Webhook 路由
 app.post(
   '/webhook',
@@ -56,7 +61,11 @@ app.post(
  * 從文字中解析出交易紀錄，並回傳交易的物件
  * @description 日期(MMDD) 品項 金額:備註
  */
-const parseTransaction = (text: string, globalDate?: string): Transaction => {
+const parseTransaction = (
+  text: string,
+  globalDate?: string,
+  currentCategoryMap: Record<string, string[]> = {}
+): Transaction => {
   // 增加備註 & 日期的解析
   const match = text
     .trim()
@@ -87,9 +96,9 @@ const parseTransaction = (text: string, globalDate?: string): Transaction => {
   const note = noteRaw?.trim();
 
   if (description.includes('阿君')) {
-    const regex = new RegExp(rechargeWords.join('|'));
+    const regex = new RegExp(depositWords.join('|'));
     const isRecharge = regex.test(description);
-    const category = isRecharge ? achunCategory.recharge : achunCategory.spent;
+    const category = isRecharge ? achunCategory.deposit : achunCategory.spent;
 
     return {
       account: '侯阿君',
@@ -100,10 +109,9 @@ const parseTransaction = (text: string, globalDate?: string): Transaction => {
     };
   }
 
-  const [category] = Object.entries(categoryMap).find(([, subCategories]) =>
-    subCategories.some(
-      keyword => description.includes(keyword) || keyword.includes(description)
-    ) // 輸入內容與子類別關鍵字任一方包含另一方，就符合
+  const [category] = Object.entries(currentCategoryMap).find(
+    ([, subCategories]) =>
+      subCategories.some(keyword => description.includes(keyword) || keyword.includes(description)) // 輸入內容與子類別關鍵字任一方包含另一方，就符合
   ) ?? [''];
   const subcategory = category ? description : '';
 
@@ -175,8 +183,10 @@ async function handleEvent(event: LINE.webhook.MessageEvent, baseUrl: string): P
       throw new Error('No transactions');
     }
 
+    const currentCategoryMap = await getCategoryMap();
+
     const transactions = transactionsText.map(transactionText => {
-      const transaction = parseTransaction(transactionText, globalDate);
+      const transaction = parseTransaction(transactionText, globalDate, currentCategoryMap);
 
       // 驗證輸入內容
       if (!transaction.amount || isNaN(transaction.amount) || !transaction.category) {
