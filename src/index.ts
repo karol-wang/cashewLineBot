@@ -4,8 +4,9 @@ import dotenv from 'dotenv';
 import dayjs from 'dayjs';
 import timezone from 'dayjs/plugin/timezone';
 import { getCategoryMap } from './maps';
-import { CashewPlatform } from './types';
+import { CashewPlatform, Transaction } from './types';
 import { parseTransaction, parseCashewLink, parseCategoryQuery } from './parser';
+import { parseTransactionWithAI } from './intelligence';
 import { createFlexMessage } from './helper';
 
 dayjs.extend(timezone);
@@ -96,20 +97,32 @@ async function handleEvent(event: LINE.webhook.MessageEvent, baseUrl: string): P
   }
 
   try {
-    if (transactionsText.length === 0) {
-      throw new Error('No transactions');
+    let transactions: Transaction[] = [];
+    let isRegexSuccess = true;
+
+    // 先嘗試傳統 Regex 分行解析
+    if (transactionsText.length > 0) {
+      for (const transactionText of transactionsText) {
+        const transaction = parseTransaction(transactionText, globalDate, currentCategoryMap);
+        if (!transaction.amount || isNaN(transaction.amount) || !transaction.category) {
+          isRegexSuccess = false;
+          break;
+        }
+        transactions.push(transaction);
+      }
+    } else {
+      isRegexSuccess = false;
     }
 
-    const transactions = transactionsText.map(transactionText => {
-      const transaction = parseTransaction(transactionText, globalDate, currentCategoryMap);
-
-      // 驗證輸入內容
-      if (!transaction.amount || isNaN(transaction.amount) || !transaction.category) {
+    // 若傳統 Regex 解析失敗（如輸入一句話含多筆交易的自然語言），調用 Gemini AI 解析全內文
+    if (!isRegexSuccess || transactions.length === 0) {
+      const aiParsedList = await parseTransactionWithAI(userText, currentCategoryMap);
+      if (aiParsedList && aiParsedList.length > 0) {
+        transactions = aiParsedList;
+      } else {
         throw new Error('Invalid input');
       }
-
-      return transaction;
-    });
+    }
 
     const platformLinks = parseCashewLink(transactions, CashewPlatformUrl);
     console.log('📝file: index.ts ~ parseCashewLink ~ transactions:');
@@ -118,12 +131,16 @@ async function handleEvent(event: LINE.webhook.MessageEvent, baseUrl: string): P
     // 定義 Flex Message 內容
     const flexContainer = createFlexMessage(transactions, platformLinks);
 
+    const summaryText = transactions
+      .map(t => `${t.category}${t.subcategory ? `-${t.subcategory}` : ''} $${Math.abs(t.amount)}`)
+      .join(', ');
+
     return client.replyMessage({
       replyToken: event.replyToken as string,
       messages: [
         {
           type: 'flex',
-          altText: `記帳確認：${transactionsText.join(', ')}`,
+          altText: `記帳確認：${summaryText}`,
           contents: flexContainer,
         },
       ],
@@ -134,7 +151,7 @@ async function handleEvent(event: LINE.webhook.MessageEvent, baseUrl: string): P
       messages: [
         {
           type: 'text',
-          text: '⚠️ 請輸入正確格式：\n「日期(MMDD) 品項 金額:備註」\n\n或是將日期寫在第一行：\n0408\n咖啡 120:備註\n晚餐 99\n可輸入「查、查詢、分類、選單、類別、!cat、/cat」來查詢分類。',
+          text: '⚠️ 請輸入正確格式：\n「日期(MMDD) 品項 金額:備註」\n\n或是將日期寫在第一行：\n0408\n咖啡 120:備註\n晚餐 99\n也可直接輸入自然語言如「昨天中午吃麥當勞250，下午茶手搖60，晚上搭計程車200」！',
         },
       ],
     });

@@ -13,6 +13,7 @@
   "license": "ISC",
   "description": "",
   "dependencies": {
+    "@google/genai": "^2.15.0",
     "@line/bot-sdk": "^11.0.0",
     "dayjs": "^1.11.20",
     "dotenv": "^17.4.0",
