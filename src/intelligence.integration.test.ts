@@ -34,7 +34,7 @@ describe('parseTransactionWithAI', () => {
   });
   it('測試使用自然語言:上週日吃喝39 午餐跟阿君平分1000', async () => {
     const result = await parseTransactionWithAI('上週日吃喝39 午餐1000跟阿君平分');
-    console.log('📝file: intelligence.test.ts ~ line 37 ~ result:', result);
+    console.log('📝file: intelligence.integration.test.ts ~ line 37 ~ result:', result);
     expect(result?.[0]?.amount).toBe(-39);
     expect(result?.[0]?.category).toBe('飲食');
     expect(result?.[0]?.subcategory).toBe('吃吃喝喝的');

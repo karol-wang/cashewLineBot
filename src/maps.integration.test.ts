@@ -1,7 +1,7 @@
 import { describe, it, expect, beforeAll } from 'vitest';
 import { getCategoryMap, staticCategoryMap } from './maps';
 
-describe('getCategoryMap（整合測試：實際連線 Google Sheet）', () => {
+describe('getCategoryMap（Integration：實際連線 Google Sheet）', () => {
   beforeAll(() => {
     if (!process.env.GOOGLE_SHEET_CSV_URL) {
       console.warn('⚠️  未設定 GOOGLE_SHEET_CSV_URL，將使用靜態備援');
