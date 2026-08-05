@@ -5,7 +5,7 @@ import dayjs from 'dayjs';
 import timezone from 'dayjs/plugin/timezone';
 import { getCategoryMap } from './maps';
 import { CashewPlatform } from './types';
-import { parseTransaction, parseCashewLink } from './parser';
+import { parseTransaction, parseCashewLink, parseCategoryQuery } from './parser';
 import { createFlexMessage } from './helper';
 
 dayjs.extend(timezone);
@@ -64,11 +64,24 @@ async function handleEvent(event: LINE.webhook.MessageEvent, baseUrl: string): P
   }
 
   const userText = event.message.text.trim();
+  const currentCategoryMap = await getCategoryMap();
+
+  // 1. 檢查是否為類別查詢指令 (前綴：查、查詢、分類、選單、類別、!cat、/cat)
+  const queryResult = parseCategoryQuery(userText, currentCategoryMap);
+  if (queryResult.isQuery) {
+    return client.replyMessage({
+      replyToken: event.replyToken as string,
+      messages: [{ type: 'text', text: queryResult.replyText || '' }],
+    });
+  }
+
+  // 2. 處理記帳訊息
   const transactionsText = userText
     .split(/\n/)
     .map(t => t.trim())
     .filter(Boolean);
 
+  /** 首行日期 YYYY-MM-DD */
   let globalDate: string | undefined;
   if (transactionsText.length > 0) {
     // 判斷第一行是否為日期
@@ -86,8 +99,6 @@ async function handleEvent(event: LINE.webhook.MessageEvent, baseUrl: string): P
     if (transactionsText.length === 0) {
       throw new Error('No transactions');
     }
-
-    const currentCategoryMap = await getCategoryMap();
 
     const transactions = transactionsText.map(transactionText => {
       const transaction = parseTransaction(transactionText, globalDate, currentCategoryMap);
@@ -123,7 +134,7 @@ async function handleEvent(event: LINE.webhook.MessageEvent, baseUrl: string): P
       messages: [
         {
           type: 'text',
-          text: '⚠️ 請輸入正確格式：\n「日期(MMDD) 品項 金額:備註」\n\n或是將日期寫在第一行：\n0408\n咖啡 120:備註\n晚餐 99',
+          text: '⚠️ 請輸入正確格式：\n「日期(MMDD) 品項 金額:備註」\n\n或是將日期寫在第一行：\n0408\n咖啡 120:備註\n晚餐 99\n可輸入「查、查詢、分類、選單、類別、!cat、/cat」來查詢分類。',
         },
       ],
     });

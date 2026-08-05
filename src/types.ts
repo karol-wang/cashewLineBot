@@ -7,6 +7,7 @@ interface Transaction {
   subcategory?: string;
   amount: number;
   note?: string;
+  /** YYYY-MM-DD string */
   date?: string;
   account?: '我的錢錢' | '侯阿君';
 }
