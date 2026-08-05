@@ -1,6 +1,6 @@
 import dayjs from 'dayjs';
 import customParseFormat from 'dayjs/plugin/customParseFormat';
-import { achunCategory, depositWords } from './maps';
+import { achunCategory, depositWords, staticCategoryMap } from './maps';
 import { CashewPlatform, Transaction } from './types';
 
 dayjs.extend(customParseFormat);
@@ -13,7 +13,7 @@ export const parseTransaction = (
   text: string,
   /** YYYY-MM-DD */
   globalDate?: string,
-  currentCategoryMap: Record<string, string[]> = {}
+  currentCategoryMap: Record<string, string[]> = staticCategoryMap
 ): Transaction => {
   // 增加備註 & 日期的解析
   const match = text
@@ -102,7 +102,7 @@ export interface CategoryQueryResult {
  */
 export const parseCategoryQuery = (
   userText: string,
-  categoryMap: Record<string, string[]>
+  categoryMap: Record<string, string[]> = staticCategoryMap
 ): CategoryQueryResult => {
   const queryPrefixRegex = /^(?:查|查詢|分類|選單|類別|!cat|\/cat)(?:\s+(.*))?$/i;
   const queryMatch = userText.match(queryPrefixRegex);

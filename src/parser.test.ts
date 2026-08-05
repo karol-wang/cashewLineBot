@@ -1,20 +1,16 @@
 import { describe, it, expect } from 'vitest';
 import { parseCategoryQuery, parseTransaction, parseCashewLink } from './parser';
-import { staticCategoryMap } from './maps';
 import dayjs from 'dayjs';
-
-// 假資料直接用靜態對照表
-const mockCategoryMap = staticCategoryMap;
 
 describe('parseCategoryQuery', () => {
   it('一般記帳文字應回傳 isQuery: false', () => {
-    const res = parseCategoryQuery('早餐 100', mockCategoryMap);
+    const res = parseCategoryQuery('早餐 100');
     expect(res.isQuery).toBe(false);
     expect(res.replyText).toBeUndefined();
   });
 
   it('無關鍵字時應列出所有主類別與子類別概覽', () => {
-    const res = parseCategoryQuery('查', mockCategoryMap);
+    const res = parseCategoryQuery('查');
     expect(res.isQuery).toBe(true);
     expect(res.replyText).toContain('目前系統支援的記帳分類 (13 種)');
     expect(res.replyText).toContain(
@@ -23,15 +19,15 @@ describe('parseCategoryQuery', () => {
   });
 
   it('應支援多種前綴指令：「分類」、「選單」、「!cat」、「/cat」', () => {
-    const res1 = parseCategoryQuery('分類', mockCategoryMap);
+    const res1 = parseCategoryQuery('分類');
     expect(res1.isQuery).toBe(true);
 
-    const res2 = parseCategoryQuery('/cat', mockCategoryMap);
+    const res2 = parseCategoryQuery('/cat');
     expect(res2.isQuery).toBe(true);
   });
 
   it('應對子類別關鍵字進行模糊搜尋', () => {
-    const res = parseCategoryQuery('查 早餐', mockCategoryMap);
+    const res = parseCategoryQuery('查 早餐');
     expect(res.isQuery).toBe(true);
     expect(res.replyText).toContain('🔍 搜尋「早餐」找到的對應類別：');
     expect(res.replyText).toContain('📂 主類別：飲食');
@@ -39,7 +35,7 @@ describe('parseCategoryQuery', () => {
   });
 
   it('應對主類別名稱進行模糊搜尋', () => {
-    const res = parseCategoryQuery('查 交通', mockCategoryMap);
+    const res = parseCategoryQuery('查 交通');
     expect(res.isQuery).toBe(true);
     expect(res.replyText).toContain('🔍 搜尋「交通」找到的對應類別：');
     expect(res.replyText).toContain('📂 主類別：交通');
@@ -47,7 +43,7 @@ describe('parseCategoryQuery', () => {
   });
 
   it('查無結果時應回傳友善提示訊息', () => {
-    const res = parseCategoryQuery('查 鋼彈', mockCategoryMap);
+    const res = parseCategoryQuery('查 鋼彈');
     expect(res.isQuery).toBe(true);
     expect(res.replyText).toContain('🔍 未找到與「鋼彈」相關的分類。');
   });
@@ -55,7 +51,7 @@ describe('parseCategoryQuery', () => {
 
 describe('parseTransaction', () => {
   it('應正確解析基本記帳格式「品項 金額:備註」', () => {
-    const t = parseTransaction('早餐 80:麥當勞', undefined, mockCategoryMap);
+    const t = parseTransaction('早餐 80:麥當勞');
     expect(t.amount).toBe(-80);
     expect(t.category).toBe('飲食');
     expect(t.note).toBe('麥當勞');
@@ -63,7 +59,7 @@ describe('parseTransaction', () => {
   });
 
   it('應正確解析含日期前綴「MMDD 品項 金額」', () => {
-    const t = parseTransaction('0408 高鐵 1490', undefined, mockCategoryMap);
+    const t = parseTransaction('0408 高鐵 1490');
     expect(t.amount).toBe(-1490);
     expect(t.category).toBe('交通');
     expect(t.date).toBe('2026-04-08');
@@ -73,9 +69,7 @@ describe('parseTransaction', () => {
     const text = '0510\n高鐵 1490\n晚餐 990';
     const transactionsText = text.split('\n');
     transactionsText.shift();
-    const transactions = transactionsText.map(line =>
-      parseTransaction(line, '2026-05-10', mockCategoryMap)
-    );
+    const transactions = transactionsText.map(line => parseTransaction(line, '2026-05-10'));
     expect(transactions.length).toBe(2);
     expect(transactions[0].date).toBe('2026-05-10');
     expect(transactions[1].date).toBe('2026-05-10');

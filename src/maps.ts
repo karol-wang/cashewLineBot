@@ -52,15 +52,20 @@ export const getCategoryMap = async (): Promise<Record<string, string[]>> => {
 
   // 若快取有效，直接返回快取內容 (0ms)
   if (cachedCategoryMap && now.diff(lastFetchTime, 'minute') < CACHE_TTL_MIN) {
+    console.log(
+      `📝file: maps.ts ~ getCategoryMap ~ 使用快取 (${dayjs(lastFetchTime).format('YYYY-MM-DD HH:mm:ss')})`
+    );
     return cachedCategoryMap;
   }
 
   // 若未設定 GOOGLE_SHEET_CSV_URL，直接降級使用靜態 categoryMap
   if (!csvUrl) {
+    console.log('📝file: maps.ts ~ getCategoryMap ~ 使用靜態 categoryMap');
     return staticCategoryMap;
   }
 
   try {
+    console.log('📝file: maps.ts ~ getCategoryMap ~ 讀取 Google Sheet CSV');
     const res = await fetch(csvUrl);
     if (!res.ok) {
       throw new Error(`HTTP error! status: ${res.status}`);
@@ -78,7 +83,7 @@ export const getCategoryMap = async (): Promise<Record<string, string[]>> => {
   }
 
   return cachedCategoryMap || staticCategoryMap;
-}
+};
 
 /**
  * 將 CSV 格式文字解析為 Record<Category, Subcategories[]>
@@ -112,4 +117,4 @@ const parseCsvToCategoryMap = (csvText: string): Record<string, string[]> => {
   }
 
   return result;
-}
+};

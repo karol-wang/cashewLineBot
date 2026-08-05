@@ -1,9 +1,5 @@
 import { describe, it, expect, beforeAll } from 'vitest';
-import dotenv from 'dotenv';
 import { getCategoryMap, staticCategoryMap } from './maps';
-
-// 載入 .env，讓 GOOGLE_SHEET_CSV_URL 生效
-dotenv.config();
 
 describe('getCategoryMap（整合測試：實際連線 Google Sheet）', () => {
   beforeAll(() => {
@@ -12,7 +8,7 @@ describe('getCategoryMap（整合測試：實際連線 Google Sheet）', () => {
     }
   });
 
-  it('應回傳非空的 categoryMap', async () => {
+  it('應回傳非空的 categoryMap', { timeout: 10000 }, async () => {
     const map = await getCategoryMap();
     expect(Object.keys(map).length).toBeGreaterThan(0);
   });
