@@ -1,5 +1,3 @@
-import dayjs from 'dayjs';
-import customParseFormat from 'dayjs/plugin/customParseFormat';
 import {
   achunCategory,
   creditCardReward,
@@ -8,8 +6,7 @@ import {
   staticCategoryCatalog,
 } from './maps';
 import { CashewPlatform, CategoryCatalog, Transaction, TransactionDirection } from './types';
-
-dayjs.extend(customParseFormat);
+import datetime, { DateTimeInput, parseMonthDay } from './datetime';
 
 interface CategoryMatch {
   direction: TransactionDirection;
@@ -61,7 +58,8 @@ export const parseTransaction = (
   text: string,
   /** YYYY-MM-DD */
   globalDate?: string,
-  currentCategoryCatalog: CategoryCatalog = staticCategoryCatalog
+  currentCategoryCatalog: CategoryCatalog = staticCategoryCatalog,
+  referenceTime?: DateTimeInput
 ): Transaction => {
   // 增加備註 & 日期的解析
   const match = text
@@ -83,14 +81,13 @@ export const parseTransaction = (
   /** YYYY-MM-DD */
   let date: string | undefined;
   if (dateStr) {
-    const d = dayjs(dateStr, ['MMDD'], true);
-    date = d.isValid() ? d.format('YYYY-MM-DD') : undefined;
+    date = parseMonthDay(dateStr, referenceTime);
   }
 
   if (!date && globalDate) {
     date = globalDate;
   } else if (!date) {
-    date = dayjs().format('YYYY-MM-DD'); // 預設為今天
+    date = datetime(referenceTime).format('YYYY-MM-DD'); // 預設為訊息送出當天
   }
 
   const note = noteRaw?.trim();

@@ -1,5 +1,4 @@
 import { GoogleGenAI, Type } from '@google/genai';
-import dayjs from 'dayjs';
 import {
   achunCategory,
   creditCardReward,
@@ -7,6 +6,7 @@ import {
   staticCategoryCatalog,
 } from './maps';
 import { CategoryCatalog, Transaction, TransactionDirection } from './types';
+import datetime, { APP_TIMEZONE, DateTimeInput } from './datetime';
 
 /**
  * 使用 Gemini AI 進行自然語言語意解析（支援一句話包含單筆或多筆交易）
@@ -16,7 +16,8 @@ import { CategoryCatalog, Transaction, TransactionDirection } from './types';
  */
 export const parseTransactionWithAI = async (
   userText: string,
-  categoryCatalog: CategoryCatalog = staticCategoryCatalog
+  categoryCatalog: CategoryCatalog = staticCategoryCatalog,
+  referenceTime?: DateTimeInput
 ): Promise<Transaction[] | null> => {
   const apiKey = process.env.GEMINI_API_KEY;
   if (!apiKey) {
@@ -25,11 +26,11 @@ export const parseTransactionWithAI = async (
   }
 
   const ai = new GoogleGenAI({ apiKey });
-  const today = dayjs().format('YYYY-MM-DD');
+  const today = datetime(referenceTime).format('YYYY-MM-DD');
 
   const systemInstruction = `
 你是一個智能記帳助手。請分析使用者輸入的自然語言訊息，解析出一筆或多筆記帳交易紀錄。
-今天日期是: ${today} (Asia/Taipei)。
+今天日期是: ${today} (${APP_TIMEZONE})。
 
 現有的收入／支出分類與子類別對照表 (categoryCatalog) 如下：
 ${JSON.stringify(categoryCatalog, null, 2)}

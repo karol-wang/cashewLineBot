@@ -1,16 +1,12 @@
 import * as LINE from '@line/bot-sdk';
 import express, { Request, Response } from 'express';
 import dotenv from 'dotenv';
-import dayjs from 'dayjs';
-import timezone from 'dayjs/plugin/timezone';
 import { getCategoryCatalog } from './maps';
 import { CashewPlatform, Transaction } from './types';
 import { parseTransaction, parseCashewLink, parseCategoryQuery } from './parser';
 import { parseTransactionWithAI } from './intelligence';
 import { createFlexMessage } from './helper';
-
-dayjs.extend(timezone);
-dayjs.tz.setDefault('Asia/Taipei');
+import { parseMonthDay } from './datetime';
 
 dotenv.config();
 
@@ -65,6 +61,7 @@ async function handleEvent(event: LINE.webhook.MessageEvent, baseUrl: string): P
   }
 
   const userText = event.message.text.trim();
+  const referenceTime = event.timestamp;
   const currentCategoryCatalog = await getCategoryCatalog();
 
   // 1. 檢查是否為類別查詢指令 (前綴：查、查詢、分類、選單、類別、!cat、/cat)
@@ -88,9 +85,9 @@ async function handleEvent(event: LINE.webhook.MessageEvent, baseUrl: string): P
     // 判斷第一行是否為日期
     const dMatch = transactionsText[0].match(/^((?:0[1-9]|1[0-2])(?:0[1-9]|[12]\d|3[01]))$/);
     if (dMatch) {
-      const d = dayjs(dMatch[1], ['MMDD'], true);
-      if (d.isValid()) {
-        globalDate = d.format('YYYY-MM-DD');
+      const parsedDate = parseMonthDay(dMatch[1], referenceTime);
+      if (parsedDate) {
+        globalDate = parsedDate;
         transactionsText.shift();
       }
     }
@@ -103,7 +100,12 @@ async function handleEvent(event: LINE.webhook.MessageEvent, baseUrl: string): P
   // 先嘗試傳統 Regex 分行解析
   if (transactionsText.length > 0) {
     for (const transactionText of transactionsText) {
-      const transaction = parseTransaction(transactionText, globalDate, currentCategoryCatalog);
+      const transaction = parseTransaction(
+        transactionText,
+        globalDate,
+        currentCategoryCatalog,
+        referenceTime
+      );
       if (!transaction.amount || isNaN(transaction.amount) || !transaction.category) {
         isRegexSuccess = false;
         break;
@@ -116,7 +118,11 @@ async function handleEvent(event: LINE.webhook.MessageEvent, baseUrl: string): P
 
   // 若傳統 Regex 解析失敗（如輸入一句話含多筆交易的自然語言），調用 Gemini AI 解析全內文
   if (!isRegexSuccess || transactions.length === 0) {
-    const aiParsedList = await parseTransactionWithAI(userText, currentCategoryCatalog);
+    const aiParsedList = await parseTransactionWithAI(
+      userText,
+      currentCategoryCatalog,
+      referenceTime
+    );
     if (aiParsedList && aiParsedList.length > 0) {
       transactions = aiParsedList;
       isAIParsed = true;

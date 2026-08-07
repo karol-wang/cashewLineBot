@@ -1,9 +1,6 @@
 import { describe, it, expect, beforeAll } from 'vitest';
 import { parseTransactionWithAI } from './intelligence';
-import dayjs from 'dayjs';
-import isoWeek from 'dayjs/plugin/isoWeek';
-
-dayjs.extend(isoWeek); // 週一為第一天
+import datetime from './datetime';
 
 const DATE_FORMATE = 'YYYY-MM-DD';
 
@@ -20,7 +17,7 @@ describe('parseTransactionWithAI', () => {
     expect(result?.[0]?.category).toBe('飲食');
     expect(result?.[0]?.subcategory).toBe('午餐');
     expect(result?.[0]?.note).toBe('麥當勞');
-    expect(result?.[0]?.date).toBe(dayjs().subtract(1, 'day').format(DATE_FORMATE));
+    expect(result?.[0]?.date).toBe(datetime().subtract(1, 'day').format(DATE_FORMATE));
   });
   it('測試使用自然語言:禮拜一晚餐99 飲料50', async () => {
     const result = await parseTransactionWithAI('禮拜一晚餐99 飲料50');
@@ -30,7 +27,7 @@ describe('parseTransactionWithAI', () => {
     expect(result?.[1]?.amount).toBe(-50);
     expect(result?.[1]?.category).toBe('飲食');
     expect(result?.[1]?.subcategory).toBe('飲料');
-    expect(result?.[0]?.date).toBe(dayjs().isoWeekday(1).format(DATE_FORMATE));
+    expect(result?.[0]?.date).toBe(datetime().isoWeekday(1).format(DATE_FORMATE));
   });
   it('測試使用自然語言:上週日吃喝39 午餐跟阿君平分1000', async () => {
     const result = await parseTransactionWithAI('上週日吃喝39 午餐1000跟阿君平分');
@@ -45,14 +42,16 @@ describe('parseTransactionWithAI', () => {
     expect(result?.[2]?.category).toBe('阿君仔');
     expect(result?.[2]?.subcategory).toBe('');
     expect(result?.[2]?.account).toBe('侯阿君');
-    expect(result?.[0]?.date).toBe(dayjs().subtract(1, 'week').isoWeekday(7).format(DATE_FORMATE));
+    expect(result?.[0]?.date).toBe(
+      datetime().subtract(1, 'week').isoWeekday(7).format(DATE_FORMATE)
+    );
   });
   it('收入類別應回傳正數金額', async () => {
     const result = await parseTransactionWithAI('今天薪水入帳 50000');
     expect(result?.[0]?.amount).toBe(50000);
     expect(result?.[0]?.category).toBe('錢錢來啦');
     expect(result?.[0]?.subcategory).toBe('公司薪資');
-    expect(result?.[0]?.date).toBe(dayjs().format(DATE_FORMATE));
+    expect(result?.[0]?.date).toBe(datetime().format(DATE_FORMATE));
   });
   it('阿君加應回傳阿君抵加收入', async () => {
     const result = await parseTransactionWithAI('阿君加 100');
@@ -61,7 +60,7 @@ describe('parseTransactionWithAI', () => {
       category: '阿君抵加',
       subcategory: '',
       account: '侯阿君',
-      date: dayjs().format(DATE_FORMATE),
+      date: datetime().format(DATE_FORMATE),
     });
   });
   it('信用卡回饋清單應回傳固定分類、標題與帳戶', async () => {
@@ -72,7 +71,7 @@ describe('parseTransactionWithAI', () => {
       category: '錢錢來啦',
       subcategory: '信用卡回饋',
       account: '我的錢錢',
-      date: dayjs().format(DATE_FORMATE),
+      date: datetime().format(DATE_FORMATE),
     });
   });
   it('沒設置 GEMINI_API_KEY 則直接返回 null', async () => {

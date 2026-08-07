@@ -1,6 +1,6 @@
 import { describe, it, expect } from 'vitest';
 import { parseCategoryQuery, parseTransaction, parseCashewLink } from './parser';
-import dayjs from 'dayjs';
+import datetime from './datetime';
 
 const DATE_FORMATE = 'YYYY-MM-DD';
 
@@ -84,7 +84,7 @@ describe('parseTransaction', () => {
     expect(t.amount).toBe(-80);
     expect(t.category).toBe('飲食');
     expect(t.note).toBe('麥當勞');
-    expect(t.date).toBe(dayjs().format(DATE_FORMATE));
+    expect(t.date).toBe(datetime().format(DATE_FORMATE));
   });
 
   it('應正確解析含日期前綴「MMDD 品項 金額」', () => {
@@ -118,7 +118,7 @@ describe('parseTransaction', () => {
       category: '錢錢來啦',
       subcategory: '信用卡回饋',
       amount: 500,
-      date: dayjs().format(DATE_FORMATE),
+      date: datetime().format(DATE_FORMATE),
       account: '我的錢錢',
     });
   });
@@ -152,7 +152,7 @@ describe('parseTransaction', () => {
       amount: 100,
       category: '阿君抵加',
       subcategory: '',
-      date: dayjs().format(DATE_FORMATE),
+      date: datetime().format(DATE_FORMATE),
     });
   });
 
@@ -163,8 +163,22 @@ describe('parseTransaction', () => {
       amount: -100,
       category: '阿君仔',
       subcategory: '',
-      date: dayjs().format(DATE_FORMATE),
+      date: datetime().format(DATE_FORMATE),
     });
+  });
+
+  it('台北午夜後未指定日期時，應使用訊息送出當天而不是 UTC 前一天', () => {
+    const referenceTime = Date.parse('2026-08-06T16:30:00Z');
+    const t = parseTransaction('早餐 80', undefined, undefined, referenceTime);
+
+    expect(t.date).toBe('2026-08-07');
+  });
+
+  it('台北跨年後解析 MMDD 時，應使用台北當年的年份', () => {
+    const referenceTime = Date.parse('2025-12-31T16:30:00Z');
+    const t = parseTransaction('0101 早餐 80', undefined, undefined, referenceTime);
+
+    expect(t.date).toBe('2026-01-01');
   });
 });
 

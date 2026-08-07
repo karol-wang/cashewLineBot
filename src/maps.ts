@@ -1,5 +1,5 @@
-import dayjs from 'dayjs';
 import { CategoryCatalog, CategoryMap, TransactionDirection } from './types';
+import datetime from './datetime';
 
 export const staticExpenseCategoryMap: CategoryMap = {
   飲食: [
@@ -68,13 +68,13 @@ const CACHE_TTL_MIN = 5; // 5 分鐘快取
  * 動態取得 CategoryCatalog（優先自 Google Sheets CSV 讀取，並提供記憶體快取與本地靜態備援）
  */
 export const getCategoryCatalog = async (): Promise<CategoryCatalog> => {
-  const now = dayjs();
+  const now = datetime();
   const csvUrl = process.env.GOOGLE_SHEET_CSV_URL;
 
   // 若快取有效，直接返回快取內容 (0ms)
   if (cachedCategoryCatalog && now.diff(lastFetchTime, 'minute') < CACHE_TTL_MIN) {
     console.log(
-      `📝file: maps.ts ~ getCategoryCatalog ~ 使用快取 (${dayjs(lastFetchTime).format('YYYY-MM-DD HH:mm:ss')})`
+      `📝file: maps.ts ~ getCategoryCatalog ~ 使用快取 (${datetime(lastFetchTime).format('YYYY-MM-DD HH:mm:ss')})`
     );
     return cachedCategoryCatalog;
   }
