@@ -1,4 +1,4 @@
-import { CategoryCatalog, CategoryMap, TransactionDirection } from './types';
+import { type CategoryCatalog, type CategoryMap, type TransactionDirection } from './types';
 import datetime from './datetime';
 
 export const staticExpenseCategoryMap: CategoryMap = {

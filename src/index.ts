@@ -1,8 +1,8 @@
 import * as LINE from '@line/bot-sdk';
-import express, { Request, Response } from 'express';
+import express, { type Request, type Response } from 'express';
 import dotenv from 'dotenv';
 import { getCategoryCatalog } from './maps';
-import { CashewPlatform, Transaction } from './types';
+import { type CashewPlatform, type Transaction } from './types';
 import { parseTransaction, parseCashewLink, parseCategoryQuery } from './parser';
 import { parseTransactionWithAI } from './intelligence';
 import { createFlexMessage } from './helper';
@@ -38,9 +38,8 @@ app.post(
   LINE.middleware({ channelSecret: config.channelSecret }),
   (req: Request, res: Response) => {
     const baseUrl = `${req.protocol}://${req.get('host')}`;
-    Promise.all(
-      req.body.events.map((event: LINE.webhook.MessageEvent) => handleEvent(event, baseUrl))
-    )
+    const body = req.body as { events: LINE.webhook.MessageEvent[] };
+    Promise.all(body.events.map((event: LINE.webhook.MessageEvent) => handleEvent(event, baseUrl)))
       .then(result => res.json(result))
       .catch(err => {
         if (err instanceof LINE.HTTPFetchError) {
@@ -54,7 +53,7 @@ app.post(
 );
 
 /** Line Bot Event Handler */
-async function handleEvent(event: LINE.webhook.MessageEvent, baseUrl: string): Promise<any> {
+async function handleEvent(event: LINE.webhook.MessageEvent, _baseUrl: string): Promise<unknown> {
   // 只處理文字訊息
   if (event.type !== 'message' || event.message.type !== 'text') {
     return Promise.resolve(null);

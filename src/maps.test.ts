@@ -14,9 +14,7 @@ describe('parseCsvToCategoryCatalog', () => {
   });
 
   it('舊的兩欄格式應預設為支出', () => {
-    const catalog = parseCsvToCategoryCatalog(
-      'category,subcategory\n飲食,早餐\n交通,高鐵'
-    );
+    const catalog = parseCsvToCategoryCatalog('category,subcategory\n飲食,早餐\n交通,高鐵');
 
     expect(catalog).toEqual({
       expense: { 飲食: ['早餐'], 交通: ['高鐵'] },

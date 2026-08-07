@@ -1,5 +1,5 @@
-import { messagingApi } from '@line/bot-sdk';
-import { CashewPlatform, Transaction } from './types';
+import { type messagingApi } from '@line/bot-sdk';
+import { type CashewPlatform, type Transaction } from './types';
 
 type FlexComponent = messagingApi.FlexComponent;
 type FlexContainer = messagingApi.FlexContainer;

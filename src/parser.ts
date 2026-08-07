@@ -5,8 +5,13 @@ import {
   findCreditCardRewardTitle,
   staticCategoryCatalog,
 } from './maps';
-import { CashewPlatform, CategoryCatalog, Transaction, TransactionDirection } from './types';
-import datetime, { DateTimeInput, parseMonthDay } from './datetime';
+import {
+  type CashewPlatform,
+  type CategoryCatalog,
+  type Transaction,
+  type TransactionDirection,
+} from './types';
+import datetime, { type DateTimeInput, parseMonthDay } from './datetime';
 
 interface CategoryMatch {
   direction: TransactionDirection;
@@ -68,7 +73,7 @@ export const parseTransaction = (
 
   if (!match) {
     // Return a dummy transaction that will fail the validation in handleEvent
-    return { category: '', subcategory: '', amount: NaN } as unknown as Transaction;
+    return { category: '', subcategory: '', amount: NaN };
   }
 
   const [, dateStr, descRaw, amountStr, noteRaw] = match;

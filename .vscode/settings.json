@@ -1,3 +1,5 @@
 {
-  "cSpell.words": ["achun"]
+  "cSpell.words": ["achun"],
+  "eslint.enable": true,
+  "eslint.format.enable": true
 }

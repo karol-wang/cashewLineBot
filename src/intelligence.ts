@@ -5,8 +5,8 @@ import {
   findCreditCardRewardTitle,
   staticCategoryCatalog,
 } from './maps';
-import { CategoryCatalog, Transaction, TransactionDirection } from './types';
-import datetime, { APP_TIMEZONE, DateTimeInput } from './datetime';
+import { type CategoryCatalog, type Transaction, type TransactionDirection } from './types';
+import datetime, { APP_TIMEZONE, type DateTimeInput } from './datetime';
 
 /**
  * 使用 Gemini AI 進行自然語言語意解析（支援一句話包含單筆或多筆交易）
@@ -59,7 +59,7 @@ ${JSON.stringify(categoryCatalog, null, 2)}
 
   try {
     const response = await ai.models.generateContent({
-      model: 'gemini-3.1-flash-lite',
+      model: 'gemini-3.5-flash-lite',
       contents: [
         {
           role: 'user',

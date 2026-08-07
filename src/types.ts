@@ -26,10 +26,4 @@ interface CategoryCatalog {
   income: CategoryMap;
 }
 
-export type {
-  Transaction,
-  CashewPlatform,
-  TransactionDirection,
-  CategoryMap,
-  CategoryCatalog,
-};
+export type { Transaction, CashewPlatform, TransactionDirection, CategoryMap, CategoryCatalog };

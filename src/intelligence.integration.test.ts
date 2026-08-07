@@ -54,7 +54,7 @@ describe('parseTransactionWithAI', () => {
     expect(result?.[0]?.date).toBe(datetime().format(DATE_FORMATE));
   });
   it('阿君加應回傳阿君抵加收入', async () => {
-    const result = await parseTransactionWithAI('阿君加 100');
+    const result = await parseTransactionWithAI('阿君存100');
     expect(result?.[0]).toMatchObject({
       amount: 100,
       category: '阿君抵加',
