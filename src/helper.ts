@@ -4,6 +4,9 @@ import { CashewPlatform, Transaction } from './types';
 type FlexComponent = messagingApi.FlexComponent;
 type FlexContainer = messagingApi.FlexContainer;
 
+const EXPENSE_AMOUNT_COLOR = '#C62828';
+const INCOME_AMOUNT_COLOR = '#2E7D32';
+
 /**
  * 構造 Flex Message 內容 (每一筆交易顯示的樣子)
  * @param transactions 交易紀錄
@@ -34,7 +37,7 @@ export const createFlexMessage = (
           const con: FlexComponent[] = [
             {
               type: 'text',
-              text: `${catStr}  $${Math.abs(amount)}`,
+              text: catStr,
               wrap: true,
               color: '#666666',
               size: 'sm',
@@ -48,6 +51,14 @@ export const createFlexMessage = (
               flex: 1,
               size: 'xs',
             });
+          con.push({
+            type: 'text',
+            text: `$${Math.abs(amount)}`,
+            color: amount < 0 ? EXPENSE_AMOUNT_COLOR : INCOME_AMOUNT_COLOR,
+            align: 'end',
+            flex: 0,
+            size: 'sm',
+          });
 
           return {
             type: 'box',
