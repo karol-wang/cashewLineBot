@@ -98,6 +98,7 @@ async function handleEvent(event: LINE.webhook.MessageEvent, baseUrl: string): P
 
   let transactions: Transaction[] = [];
   let isRegexSuccess = true;
+  let isAIParsed = false;
 
   // 先嘗試傳統 Regex 分行解析
   if (transactionsText.length > 0) {
@@ -118,6 +119,7 @@ async function handleEvent(event: LINE.webhook.MessageEvent, baseUrl: string): P
     const aiParsedList = await parseTransactionWithAI(userText, currentCategoryCatalog);
     if (aiParsedList && aiParsedList.length > 0) {
       transactions = aiParsedList;
+      isAIParsed = true;
     } else {
       return client.replyMessage({
         replyToken: event.replyToken as string,
@@ -136,7 +138,9 @@ async function handleEvent(event: LINE.webhook.MessageEvent, baseUrl: string): P
   console.dir(transactions);
 
   // 定義 Flex Message 內容
-  const flexContainer = createFlexMessage(transactions, platformLinks);
+  const flexContainer = createFlexMessage(transactions, platformLinks, {
+    providedByAI: isAIParsed,
+  });
 
   const summaryText = transactions
     .map(t => `${t.category}${t.subcategory ? `-${t.subcategory}` : ''} $${Math.abs(t.amount)}`)

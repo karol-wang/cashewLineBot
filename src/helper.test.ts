@@ -51,4 +51,29 @@ describe('createFlexMessage', () => {
       '#666666'
     );
   });
+
+  it('AI 解析結果應在內文最上方顯示 Gemini 提示', () => {
+    const flexMessage = createFlexMessage(
+      [{ category: '飲食', subcategory: '早餐', amount: -100, date: '2026-08-07' }],
+      { app: 'https://app.example.com', webApp: 'https://web.example.com' },
+      { providedByAI: true }
+    );
+    const textComponents = collectTextComponents(flexMessage);
+
+    expect(textComponents.find(component => component.text === '✨ Provided by Gemini')).toEqual(
+      expect.objectContaining({ color: '#6B21A8' })
+    );
+  });
+
+  it('一般解析結果不應顯示 Gemini 提示', () => {
+    const flexMessage = createFlexMessage(
+      [{ category: '飲食', subcategory: '早餐', amount: -100, date: '2026-08-07' }],
+      { app: 'https://app.example.com', webApp: 'https://web.example.com' }
+    );
+    const textComponents = collectTextComponents(flexMessage);
+
+    expect(
+      textComponents.find(component => component.text === '✨ Provided by Gemini')
+    ).toBeUndefined();
+  });
 });

@@ -4,6 +4,10 @@ import { CashewPlatform, Transaction } from './types';
 type FlexComponent = messagingApi.FlexComponent;
 type FlexContainer = messagingApi.FlexContainer;
 
+interface FlexMessageOptions {
+  providedByAI?: boolean;
+}
+
 const EXPENSE_AMOUNT_COLOR = '#C62828';
 const INCOME_AMOUNT_COLOR = '#2E7D32';
 
@@ -14,7 +18,8 @@ const INCOME_AMOUNT_COLOR = '#2E7D32';
  */
 export const createFlexMessage = (
   transactions: Transaction[],
-  platformLinks: CashewPlatform
+  platformLinks: CashewPlatform,
+  options: FlexMessageOptions = {}
 ): FlexContainer => {
   const transactionsByDate = transactions.reduce(
     (acc, transaction) => {
@@ -102,6 +107,29 @@ export const createFlexMessage = (
     }
   );
 
+  const providerNotice: FlexComponent[] = options.providedByAI
+    ? [
+        {
+          type: 'box',
+          layout: 'vertical',
+          contents: [
+            {
+              type: 'text',
+              text: '✨ Provided by Gemini',
+              weight: 'bold',
+              color: '#6B21A8',
+              size: 'sm',
+              align: 'center',
+            },
+          ],
+          backgroundColor: '#F3E8FF',
+          cornerRadius: 'md',
+          paddingAll: 'md',
+          margin: 'md',
+        },
+      ]
+    : [];
+
   // 組合結果
   return {
     type: 'bubble',
@@ -123,7 +151,7 @@ export const createFlexMessage = (
     body: {
       type: 'box',
       layout: 'vertical',
-      contents: flexContent,
+      contents: [...providerNotice, ...flexContent],
       paddingTop: 'none',
     },
     footer: {
