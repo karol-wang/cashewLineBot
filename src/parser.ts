@@ -1,9 +1,57 @@
 import dayjs from 'dayjs';
 import customParseFormat from 'dayjs/plugin/customParseFormat';
-import { achunCategory, depositWords, staticCategoryMap } from './maps';
-import { CashewPlatform, Transaction } from './types';
+import {
+  achunCategory,
+  creditCardReward,
+  depositWords,
+  findCreditCardRewardTitle,
+  staticCategoryCatalog,
+} from './maps';
+import { CashewPlatform, CategoryCatalog, Transaction, TransactionDirection } from './types';
 
 dayjs.extend(customParseFormat);
+
+interface CategoryMatch {
+  direction: TransactionDirection;
+  category: string;
+  keyword: string;
+}
+
+/** 從文字中尋找最佳分類 */
+const findCategoryMatch = (
+  description: string,
+  categoryCatalog: CategoryCatalog = staticCategoryCatalog
+): CategoryMatch | undefined => {
+  const candidates: (CategoryMatch & { score: number })[] = [];
+
+  for (const direction of ['expense', 'income'] as const) {
+    for (const [category, keywords] of Object.entries(categoryCatalog[direction])) {
+      for (const keyword of keywords) {
+        let score = 0;
+        if (description === keyword) {
+          score = 3000 + keyword.length;
+        } else if (description.includes(keyword)) {
+          score = 2000 + keyword.length;
+        } else if (keyword.includes(description)) {
+          score = 1000 + description.length;
+        }
+
+        if (score > 0) {
+          candidates.push({ direction, category, keyword, score });
+        }
+      }
+    }
+  }
+
+  const bestMatch = candidates.sort((a, b) => b.score - a.score)[0];
+  if (!bestMatch) return undefined;
+
+  return {
+    direction: bestMatch.direction,
+    category: bestMatch.category,
+    keyword: bestMatch.keyword,
+  };
+};
 
 /**
  * 從文字中解析出交易紀錄，並回傳交易的物件
@@ -13,7 +61,7 @@ export const parseTransaction = (
   text: string,
   /** YYYY-MM-DD */
   globalDate?: string,
-  currentCategoryMap: Record<string, string[]> = staticCategoryMap
+  currentCategoryCatalog: CategoryCatalog = staticCategoryCatalog
 ): Transaction => {
   // 增加備註 & 日期的解析
   const match = text
@@ -30,7 +78,7 @@ export const parseTransaction = (
   /**
    * 預設為支出(負數)
    */
-  const amount = -parseInt(amountStr, 10);
+  const absoluteAmount = Math.abs(parseInt(amountStr, 10));
 
   /** YYYY-MM-DD */
   let date: string | undefined;
@@ -47,6 +95,19 @@ export const parseTransaction = (
 
   const note = noteRaw?.trim();
 
+  const creditCardRewardTitle = findCreditCardRewardTitle(description);
+  if (creditCardRewardTitle) {
+    return {
+      title: creditCardRewardTitle,
+      account: creditCardReward.account,
+      amount: absoluteAmount,
+      category: creditCardReward.category,
+      subcategory: creditCardReward.subcategory,
+      date,
+      note,
+    };
+  }
+
   if (description.includes('阿君')) {
     const regex = new RegExp(depositWords.join('|'));
     const isRecharge = regex.test(description);
@@ -54,18 +115,18 @@ export const parseTransaction = (
 
     return {
       account: '侯阿君',
-      amount: isRecharge ? -amount : amount,
+      amount: isRecharge ? absoluteAmount : -absoluteAmount,
       category,
+      subcategory: '',
       date,
       note,
     };
   }
 
-  const [category] = Object.entries(currentCategoryMap).find(
-    ([, subCategories]) =>
-      subCategories.some(keyword => description.includes(keyword) || keyword.includes(description)) // 輸入內容與子類別關鍵字任一方包含另一方，就符合
-  ) ?? [''];
-  const subcategory = category ? description : '';
+  const categoryMatch = findCategoryMatch(description, currentCategoryCatalog);
+  const category = categoryMatch?.category ?? '';
+  const subcategory = categoryMatch ? description : '';
+  const amount = categoryMatch?.direction === 'income' ? absoluteAmount : -absoluteAmount;
 
   return { category, subcategory, amount, date, note };
 };
@@ -102,7 +163,7 @@ export interface CategoryQueryResult {
  */
 export const parseCategoryQuery = (
   userText: string,
-  categoryMap: Record<string, string[]> = staticCategoryMap
+  categoryCatalog: CategoryCatalog = staticCategoryCatalog
 ): CategoryQueryResult => {
   const queryPrefixRegex = /^(?:查|查詢|分類|選單|類別|!cat|\/cat)(?:\s+(.*))?$/i;
   const queryMatch = userText.match(queryPrefixRegex);
@@ -115,12 +176,21 @@ export const parseCategoryQuery = (
 
   // 1. 若無輸入關鍵字 (如「查」、「分類」、「選單」)，列出所有主類別與子類別概覽
   if (!keyword) {
-    const categories = Object.keys(categoryMap);
-    let replyText = `📋 目前系統支援的記帳分類 (${categories.length} 種)：\n\n`;
-    for (const [cat, subCats] of Object.entries(categoryMap)) {
-      replyText += `📂 ${cat}：\n  ${subCats.join('、')}\n\n`;
+    const expenseCategories = Object.keys(categoryCatalog.expense);
+    const incomeCategories = Object.keys(categoryCatalog.income);
+    let replyText = `📋 目前系統支援的記帳分類：\n\n`;
+
+    replyText += `💸 支出分類 (${expenseCategories.length} 種)\n`;
+    for (const [cat, subCats] of Object.entries(categoryCatalog.expense)) {
+      replyText += `📂 ${cat}：\n  ${subCats.join('、')}\n`;
     }
-    replyText += `💡 提示：輸入「查 <品項/關鍵字>」可查詢特定分類。`;
+
+    replyText += `\n💰 收入分類 (${incomeCategories.length} 種)\n`;
+    for (const [cat, subCats] of Object.entries(categoryCatalog.income)) {
+      replyText += `📂 ${cat}：\n  ${subCats.join('、')}\n`;
+    }
+
+    replyText += `\n💡 提示：輸入「查 <品項/關鍵字>」可查詢特定分類。`;
 
     return { isQuery: true, replyText: replyText.trim() };
   }
@@ -130,22 +200,31 @@ export const parseCategoryQuery = (
   const results: {
     category: string;
     subcategory?: string;
+    direction: TransactionDirection;
     matchedType: 'category' | 'subcategory';
   }[] = [];
 
-  for (const [cat, subCats] of Object.entries(categoryMap)) {
-    const catMatches =
-      cat.toLowerCase().includes(searchKeyword) || searchKeyword.includes(cat.toLowerCase());
-    const matchedSubs = subCats.filter(
-      sub => sub.toLowerCase().includes(searchKeyword) || searchKeyword.includes(sub.toLowerCase())
-    );
+  for (const direction of ['expense', 'income'] as const) {
+    for (const [cat, subCats] of Object.entries(categoryCatalog[direction])) {
+      const catMatches =
+        cat.toLowerCase().includes(searchKeyword) || searchKeyword.includes(cat.toLowerCase());
+      const matchedSubs = subCats.filter(
+        sub =>
+          sub.toLowerCase().includes(searchKeyword) || searchKeyword.includes(sub.toLowerCase())
+      );
 
-    if (catMatches) {
-      results.push({ category: cat, matchedType: 'category' });
-    } else if (matchedSubs.length > 0) {
-      matchedSubs.forEach(sub => {
-        results.push({ category: cat, subcategory: sub, matchedType: 'subcategory' });
-      });
+      if (catMatches) {
+        results.push({ category: cat, direction, matchedType: 'category' });
+      } else if (matchedSubs.length > 0) {
+        matchedSubs.forEach(sub => {
+          results.push({
+            category: cat,
+            subcategory: sub,
+            direction,
+            matchedType: 'subcategory',
+          });
+        });
+      }
     }
   }
 
@@ -153,11 +232,18 @@ export const parseCategoryQuery = (
     let replyText = `🔍 搜尋「${keyword}」找到的對應類別：\n\n`;
 
     results.forEach(item => {
+      const directionLabel = item.direction === 'income' ? '💰 收入' : '💸 支出';
       if (item.matchedType === 'category') {
-        const subCats = categoryMap[item.category] || [];
-        replyText += `📂 主類別：${item.category}\n🏷️ 包含子類別：${subCats.join('、')}\n\n`;
+        const subCats = categoryCatalog[item.direction][item.category] || [];
+        replyText += `${directionLabel}\n📂 主類別：${item.category}\n🏷️ 包含子類別：${subCats.join('、')}\n\n`;
       } else {
-        replyText += `📂 主類別：${item.category}\n🏷️ 子類別：${item.subcategory}\n\n`;
+        const isCreditCardReward =
+          item.category === creditCardReward.category &&
+          item.subcategory === creditCardReward.subcategory;
+        const titlesText = isCreditCardReward
+          ? `💳 回饋卡別：${creditCardReward.titles.join('、')}\n`
+          : '';
+        replyText += `${directionLabel}\n📂 主類別：${item.category}\n🏷️ 子類別：${item.subcategory}\n${titlesText}\n`;
       }
     });
 

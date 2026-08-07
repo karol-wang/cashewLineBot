@@ -1,6 +1,7 @@
 import dayjs from 'dayjs';
+import { CategoryCatalog, CategoryMap, TransactionDirection } from './types';
 
-export const staticCategoryMap: Record<string, string[]> = {
+export const staticExpenseCategoryMap: CategoryMap = {
   飲食: [
     '早餐',
     '午餐',
@@ -33,67 +34,101 @@ export const staticCategoryMap: Record<string, string[]> = {
   其他: ['其他'],
 };
 
-export const categoryMap = staticCategoryMap;
+export const staticIncomeCategoryMap: CategoryMap = {
+  錢錢來啦: ['獎金', '存款息', '公司薪資', '信用卡回饋'],
+};
+
+export const staticCategoryCatalog: CategoryCatalog = {
+  expense: staticExpenseCategoryMap,
+  income: staticIncomeCategoryMap,
+};
 
 export const achunCategory = { spent: '阿君仔', deposit: '阿君抵加' };
 
 export const depositWords = ['存', '加', '進'];
 
-let cachedCategoryMap: Record<string, string[]> | null = null;
+export const creditCardReward = {
+  category: '錢錢來啦',
+  subcategory: '信用卡回饋',
+  account: '我的錢錢',
+  titles: ['Unicard', 'Ubear', '大戶', 'Richart', 'eco永續卡', 'Cube', '熊本熊', 'iLeo'],
+} as const;
+
+/** 從訊息中找出信用卡回饋名稱，回傳清單內的標準名稱。 */
+export const findCreditCardRewardTitle = (description: string): string | undefined => {
+  const normalizedDescription = description.toLowerCase();
+  return creditCardReward.titles.find(title => title.toLowerCase().includes(normalizedDescription));
+};
+
+let cachedCategoryCatalog: CategoryCatalog | null = null;
 let lastFetchTime = 0;
 const CACHE_TTL_MIN = 5; // 5 分鐘快取
 
 /**
- * 動態取得 CategoryMap（優先自 Google Sheets CSV 讀取，並提供記憶體快取與本地靜態備援）
+ * 動態取得 CategoryCatalog（優先自 Google Sheets CSV 讀取，並提供記憶體快取與本地靜態備援）
  */
-export const getCategoryMap = async (): Promise<Record<string, string[]>> => {
+export const getCategoryCatalog = async (): Promise<CategoryCatalog> => {
   const now = dayjs();
   const csvUrl = process.env.GOOGLE_SHEET_CSV_URL;
 
   // 若快取有效，直接返回快取內容 (0ms)
-  if (cachedCategoryMap && now.diff(lastFetchTime, 'minute') < CACHE_TTL_MIN) {
+  if (cachedCategoryCatalog && now.diff(lastFetchTime, 'minute') < CACHE_TTL_MIN) {
     console.log(
-      `📝file: maps.ts ~ getCategoryMap ~ 使用快取 (${dayjs(lastFetchTime).format('YYYY-MM-DD HH:mm:ss')})`
+      `📝file: maps.ts ~ getCategoryCatalog ~ 使用快取 (${dayjs(lastFetchTime).format('YYYY-MM-DD HH:mm:ss')})`
     );
-    return cachedCategoryMap;
+    return cachedCategoryCatalog;
   }
 
   // 若未設定 GOOGLE_SHEET_CSV_URL，直接降級使用靜態 categoryMap
   if (!csvUrl) {
-    console.log('📝file: maps.ts ~ getCategoryMap ~ 使用靜態 categoryMap');
-    return staticCategoryMap;
+    console.log('📝file: maps.ts ~ getCategoryCatalog ~ 使用靜態 category catalog');
+    return staticCategoryCatalog;
   }
 
   try {
-    console.log('📝file: maps.ts ~ getCategoryMap ~ 讀取 Google Sheet CSV');
+    console.log('📝file: maps.ts ~ getCategoryCatalog ~ 讀取 Google Sheet CSV');
     const res = await fetch(csvUrl);
     if (!res.ok) {
       throw new Error(`HTTP error! status: ${res.status}`);
     }
     const csvText = await res.text();
-    const parsedMap = parseCsvToCategoryMap(csvText);
+    const parsedCatalog = parseCsvToCategoryCatalog(csvText);
+    const categoryCatalog: CategoryCatalog = {
+      expense:
+        Object.keys(parsedCatalog.expense).length > 0
+          ? parsedCatalog.expense
+          : staticExpenseCategoryMap,
+      income:
+        Object.keys(parsedCatalog.income).length > 0
+          ? parsedCatalog.income
+          : staticIncomeCategoryMap,
+    };
 
-    if (Object.keys(parsedMap).length > 0) {
-      cachedCategoryMap = parsedMap;
+    if (
+      Object.keys(parsedCatalog.expense).length > 0 ||
+      Object.keys(parsedCatalog.income).length > 0
+    ) {
+      cachedCategoryCatalog = categoryCatalog;
       lastFetchTime = now.valueOf();
-      return parsedMap;
+      return categoryCatalog;
     }
   } catch (err) {
     console.error('⚠️ 讀取 Google Sheet CSV 失敗，降級使用本地 staticCategoryMap:', err);
   }
 
-  return cachedCategoryMap || staticCategoryMap;
+  return cachedCategoryCatalog || staticCategoryCatalog;
 };
 
 /**
- * 將 CSV 格式文字解析為 Record<Category, Subcategories[]>
+ * 將 CSV 格式文字解析為 CategoryCatalog。
+ * 新格式：type,category,subcategory；舊的兩欄格式預設為 expense。
  */
-const parseCsvToCategoryMap = (csvText: string): Record<string, string[]> => {
+export const parseCsvToCategoryCatalog = (csvText: string): CategoryCatalog => {
   const lines = csvText
     .split(/\r?\n/)
     .map(l => l.trim())
     .filter(Boolean);
-  const result: Record<string, string[]> = {};
+  const result: CategoryCatalog = { expense: {}, income: {} };
 
   for (let i = 0; i < lines.length; i++) {
     const line = lines[i];
@@ -102,15 +137,19 @@ const parseCsvToCategoryMap = (csvText: string): Record<string, string[]> => {
 
     const parts = line.split(',').map(s => s.trim().replace(/^"(.*)"$/, '$1'));
     if (parts.length >= 2) {
-      const category = parts[0];
-      const subcategory = parts[1];
+      const hasDirection = parts[0] === 'expense' || parts[0] === 'income';
+      const direction: TransactionDirection = hasDirection
+        ? (parts[0] as TransactionDirection)
+        : 'expense';
+      const category = hasDirection ? parts[1] : parts[0];
+      const subcategory = hasDirection ? parts[2] : parts[1];
 
       if (category && subcategory) {
-        if (!result[category]) {
-          result[category] = [];
+        if (!result[direction][category]) {
+          result[direction][category] = [];
         }
-        if (!result[category].includes(subcategory)) {
-          result[category].push(subcategory);
+        if (!result[direction][category].includes(subcategory)) {
+          result[direction][category].push(subcategory);
         }
       }
     }

@@ -17,4 +17,19 @@ interface CashewPlatform {
   app: string;
 }
 
-export type { Transaction, CashewPlatform };
+type TransactionDirection = 'expense' | 'income';
+
+type CategoryMap = Record<string, string[]>;
+
+interface CategoryCatalog {
+  expense: CategoryMap;
+  income: CategoryMap;
+}
+
+export type {
+  Transaction,
+  CashewPlatform,
+  TransactionDirection,
+  CategoryMap,
+  CategoryCatalog,
+};

@@ -3,7 +3,7 @@ import express, { Request, Response } from 'express';
 import dotenv from 'dotenv';
 import dayjs from 'dayjs';
 import timezone from 'dayjs/plugin/timezone';
-import { getCategoryMap } from './maps';
+import { getCategoryCatalog } from './maps';
 import { CashewPlatform, Transaction } from './types';
 import { parseTransaction, parseCashewLink, parseCategoryQuery } from './parser';
 import { parseTransactionWithAI } from './intelligence';
@@ -65,10 +65,10 @@ async function handleEvent(event: LINE.webhook.MessageEvent, baseUrl: string): P
   }
 
   const userText = event.message.text.trim();
-  const currentCategoryMap = await getCategoryMap();
+  const currentCategoryCatalog = await getCategoryCatalog();
 
   // 1. 檢查是否為類別查詢指令 (前綴：查、查詢、分類、選單、類別、!cat、/cat)
-  const queryResult = parseCategoryQuery(userText, currentCategoryMap);
+  const queryResult = parseCategoryQuery(userText, currentCategoryCatalog);
   if (queryResult.isQuery) {
     return client.replyMessage({
       replyToken: event.replyToken as string,
@@ -96,66 +96,62 @@ async function handleEvent(event: LINE.webhook.MessageEvent, baseUrl: string): P
     }
   }
 
-  try {
-    let transactions: Transaction[] = [];
-    let isRegexSuccess = true;
+  let transactions: Transaction[] = [];
+  let isRegexSuccess = true;
 
-    // 先嘗試傳統 Regex 分行解析
-    if (transactionsText.length > 0) {
-      for (const transactionText of transactionsText) {
-        const transaction = parseTransaction(transactionText, globalDate, currentCategoryMap);
-        if (!transaction.amount || isNaN(transaction.amount) || !transaction.category) {
-          isRegexSuccess = false;
-          break;
-        }
-        transactions.push(transaction);
+  // 先嘗試傳統 Regex 分行解析
+  if (transactionsText.length > 0) {
+    for (const transactionText of transactionsText) {
+      const transaction = parseTransaction(transactionText, globalDate, currentCategoryCatalog);
+      if (!transaction.amount || isNaN(transaction.amount) || !transaction.category) {
+        isRegexSuccess = false;
+        break;
       }
-    } else {
-      isRegexSuccess = false;
+      transactions.push(transaction);
     }
-
-    // 若傳統 Regex 解析失敗（如輸入一句話含多筆交易的自然語言），調用 Gemini AI 解析全內文
-    if (!isRegexSuccess || transactions.length === 0) {
-      const aiParsedList = await parseTransactionWithAI(userText, currentCategoryMap);
-      if (aiParsedList && aiParsedList.length > 0) {
-        transactions = aiParsedList;
-      } else {
-        throw new Error('Invalid input');
-      }
-    }
-
-    const platformLinks = parseCashewLink(transactions, CashewPlatformUrl);
-    console.log('📝file: index.ts ~ parseCashewLink ~ transactions:');
-    console.dir(transactions);
-
-    // 定義 Flex Message 內容
-    const flexContainer = createFlexMessage(transactions, platformLinks);
-
-    const summaryText = transactions
-      .map(t => `${t.category}${t.subcategory ? `-${t.subcategory}` : ''} $${Math.abs(t.amount)}`)
-      .join(', ');
-
-    return client.replyMessage({
-      replyToken: event.replyToken as string,
-      messages: [
-        {
-          type: 'flex',
-          altText: `記帳確認：${summaryText}`,
-          contents: flexContainer,
-        },
-      ],
-    });
-  } catch (err) {
-    return client.replyMessage({
-      replyToken: event.replyToken as string,
-      messages: [
-        {
-          type: 'text',
-          text: '⚠️ 請輸入正確格式：\n「日期(MMDD) 品項 金額:備註」\n\n或是將日期寫在第一行：\n0408\n咖啡 120:備註\n晚餐 99\n也可直接輸入自然語言如「昨天中午吃麥當勞250，下午茶手搖60，晚上搭計程車200」！',
-        },
-      ],
-    });
+  } else {
+    isRegexSuccess = false;
   }
+
+  // 若傳統 Regex 解析失敗（如輸入一句話含多筆交易的自然語言），調用 Gemini AI 解析全內文
+  if (!isRegexSuccess || transactions.length === 0) {
+    const aiParsedList = await parseTransactionWithAI(userText, currentCategoryCatalog);
+    if (aiParsedList && aiParsedList.length > 0) {
+      transactions = aiParsedList;
+    } else {
+      return client.replyMessage({
+        replyToken: event.replyToken as string,
+        messages: [
+          {
+            type: 'text',
+            text: '⚠️ 請輸入正確格式：\n「日期(MMDD) 品項 金額:備註」\n\n或是將日期寫在第一行：\n0408\n咖啡 120:備註\n晚餐 99\n也可直接輸入自然語言如「昨天中午吃麥當勞250，下午茶手搖60，晚上搭計程車200」！',
+          },
+        ],
+      });
+    }
+  }
+
+  const platformLinks = parseCashewLink(transactions, CashewPlatformUrl);
+  console.log('📝file: index.ts ~ parseCashewLink ~ transactions:');
+  console.dir(transactions);
+
+  // 定義 Flex Message 內容
+  const flexContainer = createFlexMessage(transactions, platformLinks);
+
+  const summaryText = transactions
+    .map(t => `${t.category}${t.subcategory ? `-${t.subcategory}` : ''} $${Math.abs(t.amount)}`)
+    .join(', ');
+
+  return client.replyMessage({
+    replyToken: event.replyToken as string,
+    messages: [
+      {
+        type: 'flex',
+        altText: `記帳確認：${summaryText}`,
+        contents: flexContainer,
+      },
+    ],
+  });
 }
 
 const port = process.env.PORT || 3000;
