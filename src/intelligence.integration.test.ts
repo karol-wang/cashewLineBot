@@ -47,6 +47,34 @@ describe('parseTransactionWithAI', () => {
     expect(result?.[2]?.account).toBe('侯阿君');
     expect(result?.[0]?.date).toBe(dayjs().subtract(1, 'week').isoWeekday(7).format(DATE_FORMATE));
   });
+  it('收入類別應回傳正數金額', async () => {
+    const result = await parseTransactionWithAI('今天薪水入帳 50000');
+    expect(result?.[0]?.amount).toBe(50000);
+    expect(result?.[0]?.category).toBe('錢錢來啦');
+    expect(result?.[0]?.subcategory).toBe('公司薪資');
+    expect(result?.[0]?.date).toBe(dayjs().format(DATE_FORMATE));
+  });
+  it('阿君加應回傳阿君抵加收入', async () => {
+    const result = await parseTransactionWithAI('阿君加 100');
+    expect(result?.[0]).toMatchObject({
+      amount: 100,
+      category: '阿君抵加',
+      subcategory: '',
+      account: '侯阿君',
+      date: dayjs().format(DATE_FORMATE),
+    });
+  });
+  it('信用卡回饋清單應回傳固定分類、標題與帳戶', async () => {
+    const result = await parseTransactionWithAI('Unicard 500');
+    expect(result?.[0]).toMatchObject({
+      title: 'Unicard',
+      amount: 500,
+      category: '錢錢來啦',
+      subcategory: '信用卡回饋',
+      account: '我的錢錢',
+      date: dayjs().format(DATE_FORMATE),
+    });
+  });
   it('沒設置 GEMINI_API_KEY 則直接返回 null', async () => {
     const originalKey = process.env.GEMINI_API_KEY;
     delete process.env.GEMINI_API_KEY;
